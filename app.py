@@ -127,6 +127,8 @@ def extract_vakkennis_en_werkprocessen(pdf_file):
                     if current_werkproces and current_werkproces_beschrijving:
                         werkprocessen_beschrijvingen[current_werkproces] = current_werkproces_beschrijving.strip()
                         debug_log.append(f"Werkprocesbeschrijving toegevoegd aan {current_werkproces}: {current_werkproces_beschrijving}")
+                        if not current_werkproces_beschrijving.strip():
+                            debug_log.append(f"Waarschuwing: Geen beschrijving gevonden voor {current_werkproces}")
                     current_werkproces_beschrijving = ""
                     current_werkproces = werkproces_match.group(1)
                     if current_kerntaak not in werkprocessen_dict:
@@ -143,9 +145,9 @@ def extract_vakkennis_en_werkprocessen(pdf_file):
                     continue
 
                 # Detecteer aanvullend blok
-                if "Voor Allround betonreparateur geldt aanvullend:" in line and current_kerntaak:
+                if "Voor Metselaar geldt aanvullend:" in line and current_kerntaak:
                     aanvullend_block = True
-                    debug_log.append("Aanvullend blok voor Allround betonreparateur gestart")
+                    debug_log.append("Aanvullend blok voor Metselaar gestart")
                     continue
 
                 # Detecteer einde van "Vakkennis en vaardigheden"-blok
@@ -167,13 +169,16 @@ def extract_vakkennis_en_werkprocessen(pdf_file):
                     if current_werkproces and current_werkproces_beschrijving:
                         werkprocessen_beschrijvingen[current_werkproces] = current_werkproces_beschrijving.strip()
                         debug_log.append(f"Werkprocesbeschrijving toegevoegd aan {current_werkproces}: {current_werkproces_beschrijving}")
+                        if not current_werkproces_beschrijving.strip():
+                            debug_log.append(f"Waarschuwing: Geen beschrijving gevonden voor {current_werkproces}")
                     current_werkproces_beschrijving = ""
                     in_werkproces_block = False
                     continue
 
                 # Verwerk werkprocesbeschrijving
                 if in_werkproces_block and current_werkproces:
-                    current_werkproces_beschrijving += " " + line
+                    if line and not line.isspace():  # Alleen niet-lege regels toevoegen
+                        current_werkproces_beschrijving += " " + line
 
                 # Verwerk kennis/vaardigheden
                 if in_vakkennis_block and current_kerntaak:
@@ -215,6 +220,8 @@ def extract_vakkennis_en_werkprocessen(pdf_file):
             if current_werkproces and current_werkproces_beschrijving:
                 werkprocessen_beschrijvingen[current_werkproces] = current_werkproces_beschrijving.strip()
                 debug_log.append(f"Laatste werkprocesbeschrijving toegevoegd aan {current_werkproces}: {current_werkproces_beschrijving}")
+                if not current_werkproces_beschrijving.strip():
+                    debug_log.append(f"Waarschuwing: Geen beschrijving gevonden voor {current_werkproces}")
 
     except Exception as e:
         st.error(f"Fout bij het verwerken van de PDF: {e}")
