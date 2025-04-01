@@ -18,6 +18,8 @@ def extract_vakkennis_en_vaardigheden(pdf_file):
 
     # Regex voor kerntaken (zoals B1-K1, P2-K1)
     kerntaak_pattern = re.compile(r"(B\d+-K\d+|P\d+-K\d+):")
+    # Regex om ongewenste tekst (zoals "7 van 20" of "P2-K1 Organiseert...") te verwijderen
+    cleanup_pattern = re.compile(r"\d+ van \d+|(?:B|P)\d+-K\d+(?:-W\d+)?(?:[^\n]*Organiseert[^\n]*)?$")
     target_words = ["heeft", "kan", "kent", "weet", "past toe"]
     # Indicatoren om het einde van een "Vakkennis en vaardigheden"-blok te detecteren
     end_block_indicators = [
@@ -62,9 +64,11 @@ def extract_vakkennis_en_vaardigheden(pdf_file):
                     # Sla de huidige uitspraak op (indien aanwezig)
                     if current_uitspraak and current_kerntaak and in_vakkennis_block:
                         if any(current_uitspraak.startswith(word + " ") for word in target_words):
-                            if current_uitspraak not in vakkennis_dict[current_kerntaak]:
-                                vakkennis_dict[current_kerntaak].append(current_uitspraak)
-                                debug_log.append(f"Uitspraak toegevoegd aan {current_kerntaak}: {current_uitspraak}")
+                            # Schoon de uitspraak op
+                            cleaned_uitspraak = cleanup_pattern.sub("", current_uitspraak).strip()
+                            if cleaned_uitspraak not in vakkennis_dict[current_kerntaak]:
+                                vakkennis_dict[current_kerntaak].append(cleaned_uitspraak)
+                                debug_log.append(f"Uitspraak toegevoegd aan {current_kerntaak}: {cleaned_uitspraak}")
                     current_uitspraak = ""
                     current_kerntaak = kerntaak_match.group(1)
                     kerntaak_history.append((current_kerntaak, line_idx, current_section))  # Voeg kerntaak toe aan geschiedenis
@@ -101,9 +105,11 @@ def extract_vakkennis_en_vaardigheden(pdf_file):
                 if any(indicator in line for indicator in end_block_indicators):
                     if current_uitspraak and current_kerntaak and in_vakkennis_block:
                         if any(current_uitspraak.startswith(word + " ") for word in target_words):
-                            if current_uitspraak not in vakkennis_dict[current_kerntaak]:
-                                vakkennis_dict[current_kerntaak].append(current_uitspraak)
-                                debug_log.append(f"Uitspraak toegevoegd aan {current_kerntaak}: {current_uitspraak}")
+                            # Schoon de uitspraak op
+                            cleaned_uitspraak = cleanup_pattern.sub("", current_uitspraak).strip()
+                            if cleaned_uitspraak not in vakkennis_dict[current_kerntaak]:
+                                vakkennis_dict[current_kerntaak].append(cleaned_uitspraak)
+                                debug_log.append(f"Uitspraak toegevoegd aan {current_kerntaak}: {cleaned_uitspraak}")
                     current_uitspraak = ""
                     in_vakkennis_block = False
                     aanvullend_block = False
@@ -115,9 +121,11 @@ def extract_vakkennis_en_vaardigheden(pdf_file):
                     if not cleaned_line:  # Lege regel, sla op en reset
                         if current_uitspraak:
                             if any(current_uitspraak.startswith(word + " ") for word in target_words):
-                                if current_uitspraak not in vakkennis_dict[current_kerntaak]:
-                                    vakkennis_dict[current_kerntaak].append(current_uitspraak)
-                                    debug_log.append(f"Uitspraak toegevoegd aan {current_kerntaak}: {current_uitspraak}")
+                                # Schoon de uitspraak op
+                                cleaned_uitspraak = cleanup_pattern.sub("", current_uitspraak).strip()
+                                if cleaned_uitspraak not in vakkennis_dict[current_kerntaak]:
+                                    vakkennis_dict[current_kerntaak].append(cleaned_uitspraak)
+                                    debug_log.append(f"Uitspraak toegevoegd aan {current_kerntaak}: {cleaned_uitspraak}")
                             current_uitspraak = ""
                         continue
 
@@ -126,9 +134,11 @@ def extract_vakkennis_en_vaardigheden(pdf_file):
                         # Sla de vorige uitspraak op (indien aanwezig)
                         if current_uitspraak:
                             if any(current_uitspraak.startswith(word + " ") for word in target_words):
-                                if current_uitspraak not in vakkennis_dict[current_kerntaak]:
-                                    vakkennis_dict[current_kerntaak].append(current_uitspraak)
-                                    debug_log.append(f"Uitspraak toegevoegd aan {current_kerntaak}: {current_uitspraak}")
+                                # Schoon de uitspraak op
+                                cleaned_uitspraak = cleanup_pattern.sub("", current_uitspraak).strip()
+                                if cleaned_uitspraak not in vakkennis_dict[current_kerntaak]:
+                                    vakkennis_dict[current_kerntaak].append(cleaned_uitspraak)
+                                    debug_log.append(f"Uitspraak toegevoegd aan {current_kerntaak}: {cleaned_uitspraak}")
                         current_uitspraak = cleaned_line
                     else:
                         # Voeg toe aan de huidige uitspraak (voor meerregelige uitspraken)
@@ -138,9 +148,11 @@ def extract_vakkennis_en_vaardigheden(pdf_file):
             # Sla de laatste uitspraak op
             if current_uitspraak and current_kerntaak and in_vakkennis_block:
                 if any(current_uitspraak.startswith(word + " ") for word in target_words):
-                    if current_uitspraak not in vakkennis_dict[current_kerntaak]:
-                        vakkennis_dict[current_kerntaak].append(current_uitspraak)
-                        debug_log.append(f"Laatste uitspraak toegevoegd aan {current_kerntaak}: {current_uitspraak}")
+                    # Schoon de uitspraak op
+                    cleaned_uitspraak = cleanup_pattern.sub("", current_uitspraak).strip()
+                    if cleaned_uitspraak not in vakkennis_dict[current_kerntaak]:
+                        vakkennis_dict[current_kerntaak].append(cleaned_uitspraak)
+                        debug_log.append(f"Laatste uitspraak toegevoegd aan {current_kerntaak}: {cleaned_uitspraak}")
 
     except Exception as e:
         st.error(f"Fout bij het verwerken van de PDF: {e}")
@@ -159,6 +171,9 @@ def create_kruistabel(vakkennis_dict):
         for uitspraak in vakkennis_dict[kerntaak]:
             if uitspraak not in uitspraken:
                 uitspraken.append(uitspraak)
+
+    # Sorteer de uitspraken alfabetisch
+    uitspraken.sort()
 
     data = {"Uitspraak": uitspraken}
     for kerntaak in kerntaken:
