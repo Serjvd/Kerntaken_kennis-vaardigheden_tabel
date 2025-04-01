@@ -131,7 +131,7 @@ def extract_vakkennis_en_werkprocessen(pdf_file):
                         debug_log.append(f"Werkprocesbeschrijving toegevoegd aan {current_werkproces}: {current_werkproces_beschrijving}")
                         if not current_werkproces_beschrijving.strip():
                             debug_log.append(f"Waarschuwing: Geen beschrijving gevonden voor {current_werkproces}")
-                    current_w Werkproces_beschrijving = ""
+                    current_werkproces_beschrijving = ""
                     current_werkproces = werkproces_match.group(1)
                     if current_kerntaak not in werkprocessen_dict:
                         werkprocessen_dict[current_kerntaak] = []
