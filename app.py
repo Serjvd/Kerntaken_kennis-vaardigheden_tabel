@@ -27,9 +27,9 @@ def extract_vakkennis_en_werkprocessen(pdf_file):
     kerntaak_pattern = re.compile(r"(B\d+-K\d+|P\d+-K\d+):")
     # Regex voor werkprocessen (zoals B1-K1-W1)
     werkproces_pattern = re.compile(r"(B\d+-K\d+-W\d+|P\d+-K\d+-W\d+):")
-    # Regex om ongewenste tekst (zoals "7 van 20" of "P2-K1 Organiseert...") te verwijderen
+    # Regex om ongewenste tekst (zoals "7 van 18" of "P2-K1 Organiseert...") te verwijderen
     cleanup_pattern = re.compile(r"\d+ van \d+|(?:B|P)\d+-K\d+(?:-W\d+)?(?:[^\n]*Organiseert[^\n]*)?$")
-    target_words = ["heeft", "kan", "kent", "weet", "past toe"]
+    target_words = ["heeft", "kan", "kent", "weet", "past", "bezit"]  # Aangepast om "bezit" toe te voegen
     # Indicatoren om het einde van een "Vakkennis en vaardigheden"-blok te detecteren
     end_block_indicators = [
         "Complexiteit", "Verantwoordelijkheid en zelfstandigheid", "Omschrijving",
@@ -42,7 +42,8 @@ def extract_vakkennis_en_werkprocessen(pdf_file):
         "Complexiteit", "Verantwoordelijkheid en zelfstandigheid", "Omschrijving",
         "Profieldeel", "Mbo-niveau", "Typering van het beroep", "Beroepsvereisten",
         "Generieke onderdelen", "Inhoudsopgave", "Leeswijzer", "Overzicht van het kwalificatiedossier",
-        "Basisdeel", "Resultaat", "Gedrag", "Vakkennis en vaardigheden"
+        "Basisdeel", "Resultaat", "Gedrag", "Vakkennis en vaardigheden",
+        "Voor Metselaar geldt aanvullend:"
     ]
 
     try:
@@ -283,7 +284,11 @@ def create_kruistabel(vakkennis_dict, werkprocessen_dict, werkprocessen_beschrij
         beschrijving = werkprocessen_beschrijvingen.get(werkproces, werkproces)  # Gebruik werkproces-ID als fallback
         # Extraheer trefwoorden (verwijder stopwoorden en korte woorden)
         woorden = beschrijving.lower().split()
-        stopwoorden = {"en", "de", "het", "een", "voor", "met", "in", "op", "aan", "van", "bij", "is", "zijn", "b1", "k1", "w1", "w2", "w3", "w4", "w5", "w6", "w7", "w8"}
+        stopwoorden = {
+            "en", "de", "het", "een", "voor", "met", "in", "op", "aan", "van", "bij", "is", "zijn",
+            "b1", "k1", "k2", "w1", "w2", "w3", "w4", "w5", "w6", "w7", "w8", "de", "allround",
+            "metselaar", "voor", "n", "v", "t", "hij", "zo", "nodig", "aan", "of", "werkplek"
+        }
         trefwoorden = [woord for woord in woorden if woord not in stopwoorden and len(woord) > 3]
         werkproces_trefwoorden[werkproces] = trefwoorden
 
