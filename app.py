@@ -13,7 +13,8 @@ def extract_vakkennis_en_vaardigheden(pdf_file):
     raw_text = []  # Voor debugging
     current_uitspraak = ""  # Voor uitspraken die over meerdere regels lopen
     debug_log = []  # Voor extra debugging-informatie
-    last_kerntaak = None  # Houd de laatst gedetecteerde kerntaak bij
+    kerntaak_history = []  # Lijst om alle gedetecteerde kerntaken en hun posities bij te houden
+    current_section = None  # Houd bij of we in "Basisdeel" of "Profieldeel" zitten
 
     # Regex voor kerntaken (zoals B1-K1, P2-K1)
     kerntaak_pattern = re.compile(r"(B\d+-K\d+|P\d+-K\d+):")
@@ -39,9 +40,21 @@ def extract_vakkennis_en_vaardigheden(pdf_file):
                 st.warning("Geen tekst gevonden in de PDF. Is het bestand leeg of gescand?")
                 return {}, raw_text, debug_log
 
-            for line in full_text.split("\n"):
+            # Splits de tekst in regels en verwerk ze
+            lines = full_text.split("\n")
+            for line_idx, line in enumerate(lines):
                 line = line.strip()
                 debug_log.append(f"Verwerk regel: {line}")
+
+                # Detecteer secties (Basisdeel of Profieldeel)
+                if "Basisdeel" in line:
+                    current_section = "Basisdeel"
+                    debug_log.append("Sectie gedetecteerd: Basisdeel")
+                    continue
+                if "Profieldeel" in line:
+                    current_section = "Profieldeel"
+                    debug_log.append("Sectie gedetecteerd: Profieldeel")
+                    continue
 
                 # Detecteer kerntaak
                 kerntaak_match = kerntaak_pattern.search(line)
@@ -54,22 +67,28 @@ def extract_vakkennis_en_vaardigheden(pdf_file):
                                 debug_log.append(f"Uitspraak toegevoegd aan {current_kerntaak}: {current_uitspraak}")
                     current_uitspraak = ""
                     current_kerntaak = kerntaak_match.group(1)
-                    last_kerntaak = current_kerntaak  # Bijhouden van de laatst gedetecteerde kerntaak
-                    in_vakkennis_block = False  # Reset bij nieuwe kerntaak
-                    aanvullend_block = False
+                    kerntaak_history.append((current_kerntaak, line_idx, current_section))  # Voeg kerntaak toe aan geschiedenis
                     if current_kerntaak not in vakkennis_dict:
                         vakkennis_dict[current_kerntaak] = []
-                    debug_log.append(f"Nieuwe kerntaak gedetecteerd: {current_kerntaak}")
+                    debug_log.append(f"Nieuwe kerntaak gedetecteerd: {current_kerntaak} (sectie: {current_section})")
+                    in_vakkennis_block = False  # Reset bij nieuwe kerntaak
+                    aanvullend_block = False
                     continue
 
                 # Detecteer start van "Vakkennis en vaardigheden"
                 if "Vakkennis en vaardigheden" in line:
-                    if last_kerntaak:  # Gebruik de laatst gedetecteerde kerntaak
-                        current_kerntaak = last_kerntaak  # Zorg ervoor dat we de juiste kerntaak gebruiken
+                    # Zoek de meest recente kerntaak vóór deze regel
+                    relevant_kerntaak = None
+                    for kerntaak, idx, section in reversed(kerntaak_history):
+                        if idx < line_idx and section == current_section:
+                            relevant_kerntaak = kerntaak
+                            break
+                    if relevant_kerntaak:
+                        current_kerntaak = relevant_kerntaak
                         in_vakkennis_block = True
-                        debug_log.append(f"Vakkennis en vaardigheden-blok gestart voor {current_kerntaak}")
+                        debug_log.append(f"Vakkennis en vaardigheden-blok gestart voor {current_kerntaak} (sectie: {current_section})")
                     else:
-                        debug_log.append("Vakkennis en vaardigheden-blok gedetecteerd, maar geen kerntaak actief")
+                        debug_log.append("Vakkennis en vaardigheden-blok gedetecteerd, maar geen relevante kerntaak gevonden")
                     continue
 
                 # Detecteer aanvullend blok
