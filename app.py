@@ -240,6 +240,8 @@ def create_kruistabel(vakkennis_dict, werkprocessen_dict, werkprocessen_beschrij
 
     # Lijst om koppelingen op te slaan voor debugging
     koppelingen_log = []
+    # Dictionary om fallback-koppelingen bij te houden: {uitspraak: werkproces}
+    fallback_koppelingen = {}
 
     # Koppel uitspraken aan werkprocessen via tekstanalyse
     vectorizer = TfidfVectorizer()
@@ -262,6 +264,7 @@ def create_kruistabel(vakkennis_dict, werkprocessen_dict, werkprocessen_beschrij
                 # Fallback: koppel aan het eerste werkproces
                 best_werkproces = kerntaak_werkprocessen[0]
                 koppelingen_log.append(f"Geen beschrijving beschikbaar, koppel {uitspraak} aan {best_werkproces}")
+                fallback_koppelingen[uitspraak] = best_werkproces
             else:
                 # Bereken de TF-IDF-matrix
                 tfidf_matrix = vectorizer.fit_transform(texts)
@@ -281,7 +284,21 @@ def create_kruistabel(vakkennis_dict, werkprocessen_dict, werkprocessen_beschrij
     display_df = pd.DataFrame(display_data)
     sort_df = pd.DataFrame(sort_data)
 
-    return display_df, sort_df, koppelingen_log
+    # Maak een stijltoepassing om fallback-koppelingen geel te markeren
+    def highlight_fallback(val, row_idx, col_name):
+        uitspraak = display_df.iloc[row_idx]["Uitspraak"]
+        if val == "×" and col_name in alle_werkprocessen:  # Controleer alleen werkproceskolommen
+            if uitspraak in fallback_koppelingen and fallback_koppelingen[uitspraak] == col_name:
+                return "background-color: yellow"
+        return ""
+
+    # Pas de stijl toe op de DataFrame
+    styled_df = display_df.style.apply(
+        lambda x: [highlight_fallback(x[col], idx, col) for idx, col in enumerate(display_df.columns)],
+        axis=1
+    )
+
+    return styled_df, sort_df, koppelingen_log
 
 # Streamlit-interface
 def main():
@@ -308,8 +325,8 @@ def main():
             st.write("Beschrijvingen van werkprocessen:", werkprocessen_beschrijvingen)
 
         if vakkennis_dict:
-            display_df, sort_df, koppelingen_log = create_kruistabel(vakkennis_dict, werkprocessen_dict, werkprocessen_beschrijvingen)
-            if display_df is not None and not display_df.empty:
+            styled_df, sort_df, koppelingen_log = create_kruistabel(vakkennis_dict, werkprocessen_dict, werkprocessen_beschrijvingen)
+            if styled_df is not None and not styled_df.data.empty:
                 # Debug: toon koppelingen tussen uitspraken en werkprocessen
                 with st.expander("Toon koppelingen tussen uitspraken en werkprocessen"):
                     st.write("Koppelingen log:")
@@ -318,20 +335,20 @@ def main():
 
                 # Toon de kruistabel
                 st.write("### Kruistabel")
-                st.write("Klik op een kolomkop om te sorteren (oplopend/aflopend):")
+                st.write("Klik op een kolomkop om te sorteren (oplopend/aflopend). Gele cellen geven aan dat de koppeling via een fallback is gemaakt (geen beschrijving beschikbaar).")
                 st.dataframe(
-                    display_df,
+                    styled_df,
                     use_container_width=True,
                     column_config={
                         col: st.column_config.Column(
                             help=f"Klik om te sorteren op {col}" if col != "Uitspraak" else None
-                        ) for col in display_df.columns
+                        ) for col in styled_df.data.columns
                     }
                 )
 
                 # Downloadknop voor Excel
                 output = BytesIO()
-                display_df.to_excel(output, index=False)
+                styled_df.data.to_excel(output, index=False)
                 output.seek(0)
                 st.download_button(
                     label="Download Excel-bestand",
