@@ -13,11 +13,12 @@ def extract_vakkennis_en_werkprocessen(pdf_file):
     werkprocessen_beschrijvingen = {}  # Voor beschrijvingen van werkprocessen
     current_kerntaak = None
     in_vakkennis_block = False
-    in_werkprocessen_block = False
+    in_werkproces_block = False
     aanvullend_block = False
     raw_text = []  # Voor debugging
     current_uitspraak = ""  # Voor uitspraken die over meerdere regels lopen
-    current_werkproces_beschrijving = ""  # Voor beschrijvingen van werkprocessen
+    current_werkproces = None  # Huidig werkproces
+    current_werkproces_beschrijving = ""  # Beschrijving van het huidige werkproces
     debug_log = []  # Voor extra debugging-informatie
     kerntaak_history = []  # Lijst om alle gedetecteerde kerntaken en hun posities bij te houden
     current_section = None  # Houd bij of we in "Basisdeel" of "Profieldeel" zitten
@@ -25,7 +26,7 @@ def extract_vakkennis_en_werkprocessen(pdf_file):
     # Regex voor kerntaken (zoals B1-K1, P2-K1)
     kerntaak_pattern = re.compile(r"(B\d+-K\d+|P\d+-K\d+):")
     # Regex voor werkprocessen (zoals B1-K1-W1)
-    werkproces_pattern = re.compile(r"(B\d+-K\d+-W\d+|P\d+-K\d+-W\d+)")
+    werkproces_pattern = re.compile(r"(B\d+-K\d+-W\d+|P\d+-K\d+-W\d+):")
     # Regex om ongewenste tekst (zoals "7 van 20" of "P2-K1 Organiseert...") te verwijderen
     cleanup_pattern = re.compile(r"\d+ van \d+|(?:B|P)\d+-K\d+(?:-W\d+)?(?:[^\n]*Organiseert[^\n]*)?$")
     target_words = ["heeft", "kan", "kent", "weet", "past toe"]
@@ -34,7 +35,7 @@ def extract_vakkennis_en_werkprocessen(pdf_file):
         "Complexiteit", "Verantwoordelijkheid en zelfstandigheid", "Omschrijving",
         "Profieldeel", "Mbo-niveau", "Typering van het beroep", "Beroepsvereisten",
         "Generieke onderdelen", "Inhoudsopgave", "Leeswijzer", "Overzicht van het kwalificatiedossier",
-        "Basisdeel", "Resultaat", "Gedrag", "Werkprocessen"
+        "Basisdeel", "Resultaat", "Gedrag"
     ]
 
     try:
@@ -77,12 +78,11 @@ def extract_vakkennis_en_werkprocessen(pdf_file):
                                 vakkennis_dict[current_kerntaak].append(cleaned_uitspraak)
                                 debug_log.append(f"Uitspraak toegevoegd aan {current_kerntaak}: {cleaned_uitspraak}")
                     # Sla de huidige werkprocesbeschrijving op (indien aanwezig)
-                    if current_werkproces_beschrijving and current_kerntaak and in_werkprocessen_block:
-                        werkproces_id = werkprocessen_dict[current_kerntaak][-1] if werkprocessen_dict[current_kerntaak] else None
-                        if werkproces_id:
-                            werkprocessen_beschrijvingen[werkproces_id] = current_werkproces_beschrijving.strip()
-                            debug_log.append(f"Werkprocesbeschrijving toegevoegd aan {werkproces_id}: {current_werkproces_beschrijving}")
+                    if current_werkproces and current_werkproces_beschrijving:
+                        werkprocessen_beschrijvingen[current_werkproces] = current_werkproces_beschrijving.strip()
+                        debug_log.append(f"Werkprocesbeschrijving toegevoegd aan {current_werkproces}: {current_werkproces_beschrijving}")
                     current_uitspraak = ""
+                    current_werkproces = None
                     current_werkproces_beschrijving = ""
                     current_kerntaak = kerntaak_match.group(1)
                     kerntaak_history.append((current_kerntaak, line_idx, current_section))
@@ -92,7 +92,7 @@ def extract_vakkennis_en_werkprocessen(pdf_file):
                         werkprocessen_dict[current_kerntaak] = []
                     debug_log.append(f"Nieuwe kerntaak gedetecteerd: {current_kerntaak} (sectie: {current_section})")
                     in_vakkennis_block = False
-                    in_werkprocessen_block = False
+                    in_werkproces_block = False
                     aanvullend_block = False
                     continue
 
@@ -107,26 +107,28 @@ def extract_vakkennis_en_werkprocessen(pdf_file):
                     if relevant_kerntaak:
                         current_kerntaak = relevant_kerntaak
                         in_vakkennis_block = True
+                        in_werkproces_block = False
                         debug_log.append(f"Vakkennis en vaardigheden-blok gestart voor {current_kerntaak} (sectie: {current_section})")
                     else:
                         debug_log.append("Vakkennis en vaardigheden-blok gedetecteerd, maar geen relevante kerntaak gevonden")
                     continue
 
-                # Detecteer start van "Werkprocessen"
-                if "Werkprocessen" in line:
-                    # Zoek de meest recente kerntaak vóór deze regel
-                    relevant_kerntaak = None
-                    for kerntaak, idx, section in reversed(kerntaak_history):
-                        if idx < line_idx and section == current_section:
-                            relevant_kerntaak = kerntaak
-                            break
-                    if relevant_kerntaak:
-                        current_kerntaak = relevant_kerntaak
-                        in_werkprocessen_block = True
-                        in_vakkennis_block = False
-                        debug_log.append(f"Werkprocessen-blok gestart voor {current_kerntaak} (sectie: {current_section})")
-                    else:
-                        debug_log.append("Werkprocessen-blok gedetecteerd, maar geen relevante kerntaak gevonden")
+                # Detecteer werkproces
+                werkproces_match = werkproces_pattern.search(line)
+                if werkproces_match and current_kerntaak:
+                    # Sla de huidige werkprocesbeschrijving op (indien aanwezig)
+                    if current_werkproces and current_werkproces_beschrijving:
+                        werkprocessen_beschrijvingen[current_werkproces] = current_werkproces_beschrijving.strip()
+                        debug_log.append(f"Werkprocesbeschrijving toegevoegd aan {current_werkproces}: {current_werkproces_beschrijving}")
+                    current_werkproces_beschrijving = ""
+                    current_werkproces = werkproces_match.group(1)
+                    if current_kerntaak not in werkprocessen_dict:
+                        werkprocessen_dict[current_kerntaak] = []
+                    if current_werkproces not in werkprocessen_dict[current_kerntaak]:
+                        werkprocessen_dict[current_kerntaak].append(current_werkproces)
+                    in_werkproces_block = True
+                    in_vakkennis_block = False
+                    debug_log.append(f"Werkproces gedetecteerd: {current_werkproces} onder {current_kerntaak}")
                     continue
 
                 # Detecteer aanvullend blok
@@ -149,26 +151,9 @@ def extract_vakkennis_en_werkprocessen(pdf_file):
                     debug_log.append(f"Vakkennis en vaardigheden-blok beëindigd door indicator: {line}")
                     continue
 
-                # Detecteer werkproces
-                if in_werkprocessen_block:
-                    werkproces_match = werkproces_pattern.search(line)
-                    if werkproces_match:
-                        # Sla de huidige werkprocesbeschrijving op (indien aanwezig)
-                        if current_werkproces_beschrijving and current_kerntaak:
-                            werkproces_id = werkprocessen_dict[current_kerntaak][-1] if werkprocessen_dict[current_kerntaak] else None
-                            if werkproces_id:
-                                werkprocessen_beschrijvingen[werkproces_id] = current_werkproces_beschrijving.strip()
-                                debug_log.append(f"Werkprocesbeschrijving toegevoegd aan {werkproces_id}: {current_werkproces_beschrijving}")
-                        current_werkproces_beschrijving = ""
-                        werkproces_id = werkproces_match.group(1)
-                        if current_kerntaak not in werkprocessen_dict:
-                            werkprocessen_dict[current_kerntaak] = []
-                        werkprocessen_dict[current_kerntaak].append(werkproces_id)
-                        debug_log.append(f"Werkproces gedetecteerd: {werkproces_id} onder {current_kerntaak}")
-                        continue
-                    # Voeg de regel toe aan de huidige werkprocesbeschrijving
-                    if current_kerntaak and werkprocessen_dict[current_kerntaak]:
-                        current_werkproces_beschrijving += " " + line
+                # Verwerk werkprocesbeschrijving
+                if in_werkproces_block and current_werkproces:
+                    current_werkproces_beschrijving += " " + line
 
                 # Verwerk kennis/vaardigheden
                 if in_vakkennis_block and current_kerntaak:
@@ -207,11 +192,9 @@ def extract_vakkennis_en_werkprocessen(pdf_file):
                         debug_log.append(f"Laatste uitspraak toegevoegd aan {current_kerntaak}: {cleaned_uitspraak}")
 
             # Sla de laatste werkprocesbeschrijving op
-            if current_werkproces_beschrijving and current_kerntaak and in_werkprocessen_block:
-                werkproces_id = werkprocessen_dict[current_kerntaak][-1] if werkprocessen_dict[current_kerntaak] else None
-                if werkproces_id:
-                    werkprocessen_beschrijvingen[werkproces_id] = current_werkproces_beschrijving.strip()
-                    debug_log.append(f"Laatste werkprocesbeschrijving toegevoegd aan {werkproces_id}: {current_werkproces_beschrijving}")
+            if current_werkproces and current_werkproces_beschrijving:
+                werkprocessen_beschrijvingen[current_werkproces] = current_werkproces_beschrijving.strip()
+                debug_log.append(f"Laatste werkprocesbeschrijving toegevoegd aan {current_werkproces}: {current_werkproces_beschrijving}")
 
     except Exception as e:
         st.error(f"Fout bij het verwerken van de PDF: {e}")
@@ -229,6 +212,7 @@ def create_kruistabel(vakkennis_dict, werkprocessen_dict, werkprocessen_beschrij
     alle_werkprocessen = []
     for kerntaak in werkprocessen_dict:
         alle_werkprocessen.extend(werkprocessen_dict[kerntaak])
+    alle_werkprocessen = sorted(list(set(alle_werkprocessen)))  # Unieke werkprocessen, gesorteerd
 
     # Verzamel alle unieke uitspraken
     uitspraken = []
@@ -249,7 +233,13 @@ def create_kruistabel(vakkennis_dict, werkprocessen_dict, werkprocessen_beschrij
         display_data[kerntaak] = ["×" if uitspraak in vakkennis_dict[kerntaak] else "" for uitspraak in uitspraken]
         sort_data[kerntaak] = [1 if uitspraak in vakkennis_dict[kerntaak] else 0 for uitspraak in uitspraken]
 
+    # Voeg kolommen toe voor werkprocessen
+    for werkproces in alle_werkprocessen:
+        display_data[werkproces] = [""] * len(uitspraken)
+        sort_data[werkproces] = [0] * len(uitspraken)
+
     # Koppel uitspraken aan werkprocessen via tekstanalyse
+    vectorizer = TfidfVectorizer()
     for kerntaak in kerntaken:
         if kerntaak not in werkprocessen_dict or not werkprocessen_dict[kerntaak]:
             continue  # Geen werkprocessen voor deze kerntaak
@@ -261,27 +251,22 @@ def create_kruistabel(vakkennis_dict, werkprocessen_dict, werkprocessen_beschrij
         # Verzamel de beschrijvingen van de werkprocessen
         werkproces_texts = [werkprocessen_beschrijvingen.get(wp, "") for wp in kerntaak_werkprocessen]
 
-        # Gebruik TF-IDF om tekstsimilariteit te berekenen
-        vectorizer = TfidfVectorizer()
         for uitspraak in kerntaak_uitspraken:
             # Maak een lijst van teksten: de uitspraak + alle werkprocesbeschrijvingen
             texts = [uitspraak] + werkproces_texts
             if not all(texts):  # Controleer of er lege teksten zijn
-                continue
-
-            # Bereken de TF-IDF-matrix
-            tfidf_matrix = vectorizer.fit_transform(texts)
-            # Bereken de cosine similarity tussen de uitspraak en elk werkproces
-            similarities = cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:])[0]
-
-            # Vind het werkproces met de hoogste similarity
-            best_match_idx = similarities.argmax()
-            best_werkproces = kerntaak_werkprocessen[best_match_idx]
-
-            # Voeg kolom toe voor dit werkproces als die nog niet bestaat
-            if best_werkproces not in display_data:
-                display_data[best_werkproces] = [""] * len(uitspraken)
-                sort_data[best_werkproces] = [0] * len(uitspraken)
+                # Fallback: koppel aan het eerste werkproces
+                best_werkproces = kerntaak_werkprocessen[0]
+                st.write(f"Geen beschrijving beschikbaar, koppel {uitspraak} aan {best_werkproces}")
+            else:
+                # Bereken de TF-IDF-matrix
+                tfidf_matrix = vectorizer.fit_transform(texts)
+                # Bereken de cosine similarity tussen de uitspraak en elk werkproces
+                similarities = cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:])[0]
+                # Vind het werkproces met de hoogste similarity
+                best_match_idx = similarities.argmax()
+                best_werkproces = kerntaak_werkprocessen[best_match_idx]
+                st.write(f"Koppel {uitspraak} aan {best_werkproces} (similarity: {similarities[best_match_idx]})")
 
             # Markeer de uitspraak in de kolom van het beste werkproces
             uitspraak_idx = uitspraken.index(uitspraak)
@@ -312,6 +297,11 @@ def main():
 
         with st.expander("Toon debug-log"):
             st.text_area("Debug-log", "\n".join(debug_log), height=300)
+
+        # Debug: toon werkprocessen en beschrijvingen
+        with st.expander("Toon gedetecteerde werkprocessen en beschrijvingen"):
+            st.write("Werkprocessen per kerntaak:", werkprocessen_dict)
+            st.write("Beschrijvingen van werkprocessen:", werkprocessen_beschrijvingen)
 
         if vakkennis_dict:
             display_df, sort_df = create_kruistabel(vakkennis_dict, werkprocessen_dict, werkprocessen_beschrijvingen)
