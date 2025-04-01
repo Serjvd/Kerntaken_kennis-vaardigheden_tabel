@@ -37,6 +37,13 @@ def extract_vakkennis_en_werkprocessen(pdf_file):
         "Generieke onderdelen", "Inhoudsopgave", "Leeswijzer", "Overzicht van het kwalificatiedossier",
         "Basisdeel", "Resultaat", "Gedrag"
     ]
+    # Indicatoren om het einde van een werkprocesbeschrijving te detecteren
+    werkproces_end_indicators = [
+        "Complexiteit", "Verantwoordelijkheid en zelfstandigheid", "Omschrijving",
+        "Profieldeel", "Mbo-niveau", "Typering van het beroep", "Beroepsvereisten",
+        "Generieke onderdelen", "Inhoudsopgave", "Leeswijzer", "Overzicht van het kwalificatiedossier",
+        "Basisdeel", "Resultaat", "Gedrag", "Vakkennis en vaardigheden"
+    ]
 
     try:
         with pdfplumber.open(pdf_file) as pdf:
@@ -129,6 +136,10 @@ def extract_vakkennis_en_werkprocessen(pdf_file):
                     in_werkproces_block = True
                     in_vakkennis_block = False
                     debug_log.append(f"Werkproces gedetecteerd: {current_werkproces} onder {current_kerntaak}")
+                    # Voeg de huidige regel (minus de ID) toe aan de beschrijving
+                    werkproces_title = line.replace(current_werkproces + ":", "").strip()
+                    if werkproces_title:
+                        current_werkproces_beschrijving += werkproces_title + " "
                     continue
 
                 # Detecteer aanvullend blok
@@ -149,6 +160,15 @@ def extract_vakkennis_en_werkprocessen(pdf_file):
                     in_vakkennis_block = False
                     aanvullend_block = False
                     debug_log.append(f"Vakkennis en vaardigheden-blok beëindigd door indicator: {line}")
+                    continue
+
+                # Detecteer einde van werkprocesbeschrijving
+                if in_werkproces_block and any(indicator in line for indicator in werkproces_end_indicators):
+                    if current_werkproces and current_werkproces_beschrijving:
+                        werkprocessen_beschrijvingen[current_werkproces] = current_werkproces_beschrijving.strip()
+                        debug_log.append(f"Werkprocesbeschrijving toegevoegd aan {current_werkproces}: {current_werkproces_beschrijving}")
+                    current_werkproces_beschrijving = ""
+                    in_werkproces_block = False
                     continue
 
                 # Verwerk werkprocesbeschrijving
