@@ -13,6 +13,7 @@ def extract_vakkennis_en_vaardigheden(pdf_file):
     raw_text = []  # Voor debugging
     current_uitspraak = ""  # Voor uitspraken die over meerdere regels lopen
     debug_log = []  # Voor extra debugging-informatie
+    last_kerntaak = None  # Houd de laatst gedetecteerde kerntaak bij
 
     # Regex voor kerntaken (zoals B1-K1, P2-K1)
     kerntaak_pattern = re.compile(r"(B\d+-K\d+|P\d+-K\d+):")
@@ -53,6 +54,7 @@ def extract_vakkennis_en_vaardigheden(pdf_file):
                                 debug_log.append(f"Uitspraak toegevoegd aan {current_kerntaak}: {current_uitspraak}")
                     current_uitspraak = ""
                     current_kerntaak = kerntaak_match.group(1)
+                    last_kerntaak = current_kerntaak  # Bijhouden van de laatst gedetecteerde kerntaak
                     in_vakkennis_block = False  # Reset bij nieuwe kerntaak
                     aanvullend_block = False
                     if current_kerntaak not in vakkennis_dict:
@@ -62,7 +64,8 @@ def extract_vakkennis_en_vaardigheden(pdf_file):
 
                 # Detecteer start van "Vakkennis en vaardigheden"
                 if "Vakkennis en vaardigheden" in line:
-                    if current_kerntaak:  # Zorg ervoor dat we een kerntaak hebben
+                    if last_kerntaak:  # Gebruik de laatst gedetecteerde kerntaak
+                        current_kerntaak = last_kerntaak  # Zorg ervoor dat we de juiste kerntaak gebruiken
                         in_vakkennis_block = True
                         debug_log.append(f"Vakkennis en vaardigheden-blok gestart voor {current_kerntaak}")
                     else:
