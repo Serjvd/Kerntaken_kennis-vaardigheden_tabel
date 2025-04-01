@@ -175,11 +175,21 @@ def create_kruistabel(vakkennis_dict):
     # Sorteer de uitspraken alfabetisch
     uitspraken.sort()
 
-    data = {"Uitspraak": uitspraken}
-    for kerntaak in kerntaken:
-        data[kerntaak] = ["×" if uitspraak in vakkennis_dict[kerntaak] else "" for uitspraak in uitspraken]
+    # Maak een DataFrame met zowel weergave- als sorteerdata
+    display_data = {"Uitspraak": uitspraken}
+    sort_data = {"Uitspraak": uitspraken}  # Voor sortering
 
-    return pd.DataFrame(data)
+    for kerntaak in kerntaken:
+        # Weergave: "×" of leeg
+        display_data[kerntaak] = ["×" if uitspraak in vakkennis_dict[kerntaak] else "" for uitspraak in uitspraken]
+        # Sorteerdata: 1 voor "×", 0 voor leeg
+        sort_data[kerntaak] = [1 if uitspraak in vakkennis_dict[kerntaak] else 0 for uitspraak in uitspraken]
+
+    # Maak twee DataFrames: een voor weergave en een voor sortering
+    display_df = pd.DataFrame(display_data)
+    sort_df = pd.DataFrame(sort_data)
+
+    return display_df, sort_df
 
 # Streamlit-interface
 def main():
@@ -201,15 +211,24 @@ def main():
             st.text_area("Debug-log", "\n".join(debug_log), height=300)
 
         if vakkennis_dict:
-            df = create_kruistabel(vakkennis_dict)
-            if df is not None and not df.empty:
+            display_df, sort_df = create_kruistabel(vakkennis_dict)
+            if display_df is not None and not display_df.empty:
                 # Toon de kruistabel
                 st.write("### Kruistabel")
-                st.dataframe(df)
+                # Gebruik st.dataframe met de sorteerdata, maar toon de weergavedata
+                st.dataframe(
+                    display_df,
+                    use_container_width=True,
+                    column_config={
+                        col: st.column_config.Column(
+                            help=f"Klik om te sorteren op {col}" if col != "Uitspraak" else None
+                        ) for col in display_df.columns
+                    }
+                )
 
                 # Downloadknop voor Excel
                 output = BytesIO()
-                df.to_excel(output, index=False)
+                display_df.to_excel(output, index=False)
                 output.seek(0)
                 st.download_button(
                     label="Download Excel-bestand",
