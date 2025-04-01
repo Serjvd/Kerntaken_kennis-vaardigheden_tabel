@@ -278,7 +278,13 @@ def create_kruistabel(vakkennis_dict, werkprocessen_dict, werkprocessen_beschrij
     fallback_koppelingen = {}
 
     # Dynamische stopwoorden genereren op basis van werkproces-ID's
-    stopwoorden = {"en", "de", "het", "een", "voor", "met", "in", "op", "aan", "van", "bij", "is", "zijn"}
+    stopwoorden = {
+        "en", "de", "het", "een", "voor", "met", "in", "op", "aan", "van", "bij", "is", "zijn",
+        "hij", "zo", "nodig", "of", "werkplek", "allround", "metselaar", "voor", "n", "v", "t",
+        "volgens", "aanbrengen", "materialen", "middelen", "veiligheidsregels", "voorschriften",
+        "wettelijke", "richtlijnen", "gedrag", "resultaat", "omschrijving", "voor", "metselaar",
+        "geldt", "aanvullend", "de", "onderliggende", "competenties", "zijn", "toepassen"
+    }
     for wp in alle_werkprocessen:
         stopwoorden.add(wp.lower())  # Voeg werkproces-ID's toe als stopwoorden
         stopwoorden.add(wp.lower().replace("-", ""))  # Voeg ook zonder streepjes toe (bijv. "b1k1w1")
@@ -287,12 +293,24 @@ def create_kruistabel(vakkennis_dict, werkprocessen_dict, werkprocessen_beschrij
     werkproces_trefwoorden = {}
     for werkproces in alle_werkprocessen:
         beschrijving = werkprocessen_beschrijvingen.get(werkproces, werkproces)
-        woorden = beschrijving.lower().split()
+        # Normaliseer de tekst: verwijder leestekens en converteer naar lowercase
+        beschrijving = re.sub(r'[^\w\s]', '', beschrijving.lower())
+        woorden = beschrijving.split()
         trefwoorden = [woord for woord in woorden if woord not in stopwoorden and len(woord) > 3]
         werkproces_trefwoorden[werkproces] = trefwoorden
 
+    # Voor contextuele fallback: geef prioriteit aan werkprocessen met bepaalde trefwoorden
+    contextuele_prioriteiten = {
+        "veiligheid": ["B1-K1-W1", "B1-K1-W8", "B1-K2-W1", "B1-K2-W5"],  # Werkplek inrichten en opruimen
+        "voegwerk": ["B1-K1-W5", "B1-K1-W6"],  # Gevel voegrijp maken en voegwerk aanbrengen
+        "spouwmuren": ["B1-K1-W3", "B1-K1-W4", "B1-K2-W4"],  # Maken van metselwerk, bouwkundige voorzieningen, maken van lijmwerk
+        "tijdelijke ondersteuningen": ["B1-K1-W2", "B1-K1-W3", "B1-K2-W2", "B1-K2-W4"],  # Stelwerk en maken van constructies
+        "kim": ["B1-K2-W2"],  # Stellen van de kim
+    }
+
     # Koppel uitspraken aan werkprocessen
     vectorizer = TfidfVectorizer(stop_words=list(stopwoorden), min_df=1)
+    fallback_counter = {wp: 0 for wp in alle_werkprocessen}  # Voor ronde-robin fallback
     for kerntaak in kerntaken:
         if kerntaak not in werkprocessen_dict or not werkprocessen_dict[kerntaak]:
             koppelingen_log.append(f"Geen werkprocessen voor kerntaak {kerntaak}")
@@ -304,10 +322,14 @@ def create_kruistabel(vakkennis_dict, werkprocessen_dict, werkprocessen_beschrij
         kerntaak_werkprocessen = werkprocessen_dict[kerntaak]
         # Verzamel de beschrijvingen van de werkprocessen
         werkproces_texts = [werkprocessen_beschrijvingen.get(wp, wp) for wp in kerntaak_werkprocessen]
+        # Normaliseer de werkprocesbeschrijvingen
+        werkproces_texts = [re.sub(r'[^\w\s]', '', text.lower()) for text in werkproces_texts]
 
         for uitspraak in kerntaak_uitspraken:
+            # Normaliseer de uitspraak
+            uitspraak_normalized = re.sub(r'[^\w\s]', '', uitspraak.lower())
             # Maak een lijst van teksten: de uitspraak + alle werkprocesbeschrijvingen
-            texts = [uitspraak] + werkproces_texts
+            texts = [uitspraak_normalized] + werkproces_texts
             best_werkproces = None
             used_fallback = False
 
@@ -316,33 +338,56 @@ def create_kruistabel(vakkennis_dict, werkprocessen_dict, werkprocessen_beschrij
                 tfidf_matrix = vectorizer.fit_transform(texts)
                 similarities = cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:])[0]
                 max_similarity = max(similarities)
-                if max_similarity > 0.2:  # Drempelwaarde voor een goede match
+                if max_similarity > 0.1:  # Verlaagde drempelwaarde voor een goede match
                     best_match_idx = similarities.argmax()
                     best_werkproces = kerntaak_werkprocessen[best_match_idx]
-                    koppelingen_log.append(f"Koppel {uitspraak} aan {best_werkproces} (similarity: {max_similarity})")
+                    koppelingen_log.append(f"Koppel {uitspraak} aan {best_werkproces} (similarity: {max_similarity}, scores: {list(similarities)})")
                 else:
                     # Geen goede match, gebruik fallback
                     used_fallback = True
-            except ValueError:
+            except ValueError as e:
                 # Tekstanalyse mislukt (bijvoorbeeld door lege teksten), gebruik fallback
                 used_fallback = True
+                koppelingen_log.append(f"Tekstanalyse mislukt voor {uitspraak}: {str(e)}")
 
             # Fallback: gebruik trefwoorden om een werkproces te kiezen
             if used_fallback:
-                uitspraak_woorden = [woord for woord in uitspraak.lower().split() if woord not in stopwoorden and len(woord) > 3]
+                uitspraak_woorden = [woord for woord in uitspraak_normalized.split() if woord not in stopwoorden and len(woord) > 3]
                 beste_score = 0
-                for wp in kerntaak_werkprocessen:
-                    trefwoorden = werkproces_trefwoorden.get(wp, [])
-                    score = sum(1 for woord in uitspraak_woorden if woord in trefwoorden)
-                    if score > beste_score:
-                        beste_score = score
-                        best_werkproces = wp
+                best_werkproces = None
+
+                # Contextuele check: geef prioriteit aan werkprocessen met relevante trefwoorden
+                for context_trefwoord, prioriteit_werkprocessen in contextuele_prioriteiten.items():
+                    if context_trefwoord in uitspraak_normalized:
+                        for wp in prioriteit_werkprocessen:
+                            if wp in kerntaak_werkprocessen:
+                                best_werkproces = wp
+                                beste_score = 100  # Hoge score om prioriteit te geven
+                                koppelingen_log.append(f"Koppel {uitspraak} aan {best_werkproces} (contextuele prioriteit: {context_trefwoord})")
+                                break
+                        if best_werkproces:
+                            break
+
+                # Als er geen contextuele match is, gebruik trefwoordovereenkomst
+                if not best_werkproces:
+                    for wp in kerntaak_werkprocessen:
+                        trefwoorden = werkproces_trefwoorden.get(wp, [])
+                        score = sum(1 for woord in uitspraak_woorden if woord in trefwoorden)
+                        if score > beste_score:
+                            beste_score = score
+                            best_werkproces = wp
+
+                # Als er nog steeds geen match is, gebruik ronde-robin om werkprocessen te verdelen
                 if not best_werkproces or beste_score == 0:
-                    # Als er geen match is, kies het werkproces met de meeste trefwoorden
-                    trefwoord_counts = {wp: len(werkproces_trefwoorden.get(wp, [])) for wp in kerntaak_werkprocessen}
-                    best_werkproces = max(trefwoord_counts, key=trefwoord_counts.get)
-                koppelingen_log.append(f"Koppel {uitspraak} aan {best_werkproces} (fallback, score: {beste_score})")
+                    # Kies het werkproces met de minste toewijzingen (ronde-robin)
+                    werkproces_counts = {wp: fallback_counter[wp] for wp in kerntaak_werkprocessen}
+                    best_werkproces = min(werkproces_counts, key=werkproces_counts.get)
+                    koppelingen_log.append(f"Koppel {uitspraak} aan {best_werkproces} (fallback, ronde-robin, geen trefwoordmatch)")
+                else:
+                    koppelingen_log.append(f"Koppel {uitspraak} aan {best_werkproces} (fallback, trefwoordscore: {beste_score})")
+
                 fallback_koppelingen[uitspraak] = best_werkproces
+                fallback_counter[best_werkproces] += 1
 
             # Markeer de uitspraak in de kolom van het beste werkproces
             uitspraak_idx = uitspraken.index(uitspraak)
@@ -396,6 +441,12 @@ def main():
                         ) for col in styled_df.data.columns
                     }
                 )
+
+                # Toon de koppelingen_log voor debugging
+                st.write("### Debug Log")
+                st.write("Hieronder zie je hoe de koppelingen zijn gemaakt:")
+                for log_entry in koppelingen_log:
+                    st.write(log_entry)
 
                 # Downloadknop voor Excel
                 output = BytesIO()
