@@ -2,7 +2,6 @@ import streamlit as st
 import pdfplumber
 import pandas as pd
 import re
-from io import BytesIO
 
 # Functie om "Vakkennis en vaardigheden"-blokken te extraheren
 def extract_vakkennis_en_vaardigheden(pdf_file):
@@ -10,6 +9,7 @@ def extract_vakkennis_en_vaardigheden(pdf_file):
     current_kerntaak = None
     in_vakkennis_block = False
     aanvullend_block = False
+    raw_text = []  # Voor debugging
 
     kerntaak_pattern = re.compile(r"(B\d+-K\d+|P\d+-K\d+):")
     target_words = ["heeft", "kan", "kent", "weet", "past toe"]
@@ -21,6 +21,11 @@ def extract_vakkennis_en_vaardigheden(pdf_file):
                 page_text = page.extract_text()
                 if page_text:
                     full_text += page_text + "\n"
+                    raw_text.append(page_text)
+
+            if not full_text.strip():
+                st.warning("Geen tekst gevonden in de PDF. Is het bestand leeg of gescand?")
+                return {}, raw_text
 
             for line in full_text.split("\n"):
                 line = line.strip()
@@ -45,14 +50,14 @@ def extract_vakkennis_en_vaardigheden(pdf_file):
                     cleaned_line = line.lstrip("- ").strip()
                     if any(cleaned_line.startswith(word + " ") for word in target_words):
                         uitspraak = cleaned_line
-                        if uitspraak not in vakkennis_dict[current_kerntaak]:
+                        if uitspraak and uitspraak not in vakkennis_dict[current_kerntaak]:
                             vakkennis_dict[current_kerntaak].append(uitspraak)
 
     except Exception as e:
         st.error(f"Fout bij het verwerken van de PDF: {e}")
-        return {}
+        return {}, raw_text
 
-    return vakkennis_dict
+    return vakkennis_dict, raw_text
 
 # Functie om kruistabel te maken
 def create_kruistabel(vakkennis_dict):
@@ -82,26 +87,33 @@ def main():
 
     if uploaded_file is not None:
         # Verwerk het geüploade bestand
-        vakkennis_dict = extract_vakkennis_en_vaardigheden(uploaded_file)
-        df = create_kruistabel(vakkennis_dict)
+        vakkennis_dict, raw_text = extract_vakkennis_en_vaardigheden(uploaded_file)
 
-        if df is not None and not df.empty:
-            # Toon de kruistabel
-            st.write("### Kruistabel")
-            st.dataframe(df)
+        # Debug: toon ruwe tekst
+        with st.expander("Toon ruwe geëxtraheerde tekst (voor debugging)"):
+            st.text_area("Ruwe tekst", "\n".join(raw_text), height=300)
 
-            # Downloadknop voor Excel
-            output = BytesIO()
-            df.to_excel(output, index=False)
-            output.seek(0)
-            st.download_button(
-                label="Download Excel-bestand",
-                data=output,
-                file_name="kruistabel_kwalificatiedossier.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
+        if vakkennis_dict:
+            df = create_kruistabel(vakkennis_dict)
+            if df is not None and not df.empty:
+                # Toon de kruistabel
+                st.write("### Kruistabel")
+                st.dataframe(df)
+
+                # Downloadknop voor Excel
+                output = BytesIO()
+                df.to_excel(output, index=False)
+                output.seek(0)
+                st.download_button(
+                    label="Download Excel-bestand",
+                    data=output,
+                    file_name="kruistabel_kwalificatiedossier.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+            else:
+                st.warning("Geen geldige gegevens gevonden in het PDF-bestand.")
         else:
-            st.warning("Geen geldige gegevens gevonden in het PDF-bestand.")
+            st.warning("Geen 'Vakkennis en vaardigheden'-blokken gevonden in de PDF.")
 
 if __name__ == "__main__":
     main()
