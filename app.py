@@ -38,10 +38,10 @@ if uploaded_file:
             for _, aanvulling in aanvullingen:
                 inhoud += "\n" + aanvulling
 
-            # Zoek uitspraken die beginnen met deze werkwoorden, ergens op een regel
-            patronen = re.findall(r"\b(heeft|kan|kent|weet|past toe)\b.*?(?=\n|$)", inhoud, re.IGNORECASE)
-            for match in re.finditer(r"\b(heeft|kan|kent|weet|past toe)\b.*?(?=\n|$)", inhoud, re.IGNORECASE):
-                regel = match.group().strip()
+            # Zoek uitspraken die beginnen met deze werkwoorden, ook met bulletpunten of lijstvormen
+            regels = re.findall(r"(?m)^(?:[-§•●]?\s*)(heeft|kan|kent|weet|past toe)\b.*", inhoud, re.IGNORECASE)
+            for regel in regels:
+                regel = regel.strip()
                 if regel not in uitspraken_dict:
                     all_uitspraken.append(regel)
                 uitspraken_dict[regel].add(code)
