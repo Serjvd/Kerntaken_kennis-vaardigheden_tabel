@@ -14,13 +14,15 @@ def extract_vakkennis_en_vaardigheden(pdf_file):
     current_uitspraak = ""  # Voor uitspraken die over meerdere regels lopen
     debug_log = []  # Voor extra debugging-informatie
 
+    # Regex voor kerntaken (zoals B1-K1, P2-K1)
     kerntaak_pattern = re.compile(r"(B\d+-K\d+|P\d+-K\d+):")
     target_words = ["heeft", "kan", "kent", "weet", "past toe"]
     # Indicatoren om het einde van een "Vakkennis en vaardigheden"-blok te detecteren
     end_block_indicators = [
         "Complexiteit", "Verantwoordelijkheid en zelfstandigheid", "Omschrijving",
         "Profieldeel", "Mbo-niveau", "Typering van het beroep", "Beroepsvereisten",
-        "Generieke onderdelen", "Inhoudsopgave", "Leeswijzer", "Overzicht van het kwalificatiedossier"
+        "Generieke onderdelen", "Inhoudsopgave", "Leeswijzer", "Overzicht van het kwalificatiedossier",
+        "Basisdeel", "Resultaat", "Gedrag"
     ]
 
     try:
@@ -60,8 +62,11 @@ def extract_vakkennis_en_vaardigheden(pdf_file):
 
                 # Detecteer start van "Vakkennis en vaardigheden"
                 if "Vakkennis en vaardigheden" in line:
-                    in_vakkennis_block = True
-                    debug_log.append("Vakkennis en vaardigheden-blok gestart")
+                    if current_kerntaak:  # Zorg ervoor dat we een kerntaak hebben
+                        in_vakkennis_block = True
+                        debug_log.append(f"Vakkennis en vaardigheden-blok gestart voor {current_kerntaak}")
+                    else:
+                        debug_log.append("Vakkennis en vaardigheden-blok gedetecteerd, maar geen kerntaak actief")
                     continue
 
                 # Detecteer aanvullend blok
