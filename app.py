@@ -1,66 +1,106 @@
-import streamlit as st
+import pdfplumber
 import pandas as pd
 import re
-from io import BytesIO
-import pdfplumber
-from collections import defaultdict
 
-st.set_page_config(page_title="Kruistabel Kwalificatiedossier", layout="wide")
-st.title("📊 Kruistabel Kennis & Vaardigheden per Kerntaak")
+# Functie om "Vakkennis en vaardigheden"-blokken te extraheren uit een PDF
+def extract_vakkennis_en_vaardigheden(pdf_path):
+    vakkennis_dict = {}
+    current_kerntaak = None
+    in_vakkennis_block = False
+    aanvullend_block = False
 
-st.markdown("Upload een kwalificatiedossier in PDF-formaat van SBB. De app genereert een kruistabel van uitspraken per kerntaak.")
+    # Regex om kerntaken te herkennen (zoals B1-K1, B1-K2, P2-K1)
+    kerntaak_pattern = re.compile(r"(B\d+-K\d+|P\d+-K\d+):")
+    # Woorden om uitspraken te filteren
+    target_words = ["heeft", "kan", "kent", "weet", "past toe"]
 
-uploaded_file = st.file_uploader("📥 Upload PDF", type="pdf")
+    # Open en lees de PDF met pdfplumber
+    try:
+        with pdfplumber.open(pdf_path) as pdf:
+            full_text = ""
+            for page in pdf.pages:
+                page_text = page.extract_text()
+                if page_text:
+                    full_text += page_text + "\n"
 
-if uploaded_file:
-    with pdfplumber.open(uploaded_file) as pdf:
-        text = "\n".join(page.extract_text() for page in pdf.pages if page.extract_text())
+            # Verwerk de tekst regel voor regel
+            for line in full_text.split("\n"):
+                line = line.strip()
 
-    kerntaak_pattern = re.compile(r"(B\d-K\d|P\d-K\d)\b")
-    kerntaken_blokken = {m.group(): m.start() for m in kerntaak_pattern.finditer(text)}
-    kerntaken = sorted(kerntaken_blokken.keys(), key=lambda k: kerntaken_blokken[k])
+                # Detecteer kerntaak
+                kerntaak_match = kerntaak_pattern.search(line)
+                if kerntaak_match:
+                    current_kerntaak = kerntaak_match.group(1)
+                    in_vakkennis_block = False
+                    aanvullend_block = False
+                    if current_kerntaak not in vakkennis_dict:
+                        vakkennis_dict[current_kerntaak] = []
+                    continue
 
-    uitspraken_dict = defaultdict(set)
-    all_uitspraken = []
+                # Detecteer start van "Vakkennis en vaardigheden"
+                if "Vakkennis en vaardigheden" in line:
+                    in_vakkennis_block = True
+                    continue
 
-    for i, code in enumerate(kerntaken):
-        start = kerntaken_blokken[code]
-        end = kerntaken_blokken[kerntaken[i + 1]] if i + 1 < len(kerntaken) else len(text)
-        blok = text[start:end]
+                # Detecteer aanvullend blok voor Allround betonreparateur
+                if "Voor Allround betonreparateur geldt aanvullend:" in line and current_kerntaak:
+                    aanvullend_block = True
+                    continue
 
-        # Zoek flexibele match voor "Vakkennis en vaardigheden"
-        match = re.search(r"Vakkennis.{0,30}vaardigheden(.*?)(?=\n\S|\Z)", blok, re.DOTALL | re.IGNORECASE)
-        if match:
-            inhoud = match.group(1)
+                # Extraheer uitspraken als we in het juiste blok zitten
+                if in_vakkennis_block and current_kerntaak:
+                    # Controleer of de regel begint met een target-woord (met of zonder opsommingsteken)
+                    cleaned_line = line.lstrip("- ").strip()
+                    if any(cleaned_line.startswith(word + " ") for word in target_words):
+                        uitspraak = cleaned_line
+                        if uitspraak not in vakkennis_dict[current_kerntaak]:
+                            vakkennis_dict[current_kerntaak].append(uitspraak)
 
-            # Zoek aanvullingen: meerdere vormen
-            aanvullingen = re.findall(r"(?:Voor|Aanvullend).*?(allround).*?:\n(.*?)(?=\n\S|\Z)", blok, re.DOTALL | re.IGNORECASE)
-            for _, aanvulling in aanvullingen:
-                inhoud += "\n" + aanvulling
+    except FileNotFoundError:
+        print(f"Fout: Het bestand '{pdf_path}' is niet gevonden.")
+        return {}
+    except Exception as e:
+        print(f"Fout bij het verwerken van de PDF: {e}")
+        return {}
 
-            # Zoek uitspraken die beginnen met deze werkwoorden, ook met bulletpunten of lijstvormen
-            regels = re.findall(r"(?m)^(?:[-§•●]?\s*)(heeft|kan|kent|weet|past toe)\b.*", inhoud, re.IGNORECASE)
-            for regel in regels:
-                regel = regel.strip()
-                if regel not in uitspraken_dict:
-                    all_uitspraken.append(regel)
-                uitspraken_dict[regel].add(code)
+    return vakkennis_dict
 
-    if not all_uitspraken:
-        st.error("⚠️ Er zijn geen uitspraken gevonden volgens het gevraagde format. Mogelijk komt dit door opmaak in de PDF.")
-    else:
-        data = []
-        for u in all_uitspraken:
-            row = {"Uitspraak": u}
-            for k in kerntaken:
-                row[k] = "×" if k in uitspraken_dict[u] else ""
-            data.append(row)
+# Hoofdprogramma
+def main(pdf_path):
+    # Extraheer vakkennis en vaardigheden
+    vakkennis_dict = extract_vakkennis_en_vaardigheden(pdf_path)
+    
+    if not vakkennis_dict:
+        print("Geen gegevens gevonden om te verwerken. Controleer het PDF-bestand.")
+        return
 
-        df = pd.DataFrame(data)
-        st.success("✅ Kruistabel gegenereerd")
-        st.dataframe(df, use_container_width=True)
+    kerntaken = list(vakkennis_dict.keys())
 
-        buffer = BytesIO()
-        df.to_excel(buffer, index=False, engine='openpyxl')
-        buffer.seek(0)
-        st.download_button("💾 Download als Excel", buffer, file_name="kruistabel.xlsx")
+    # Verzamel alle unieke uitspraken in oorspronkelijke volgorde
+    uitspraken = []
+    for kerntaak in vakkennis_dict:
+        for uitspraak in vakkennis_dict[kerntaak]:
+            if uitspraak not in uitspraken:
+                uitspraken.append(uitspraak)
+
+    # Maak kruistabel
+    data = {"Uitspraak": uitspraken}
+    for kerntaak in kerntaken:
+        data[kerntaak] = ["×" if uitspraak in vakkennis_dict[kerntaak] else "" for uitspraak in uitspraken]
+
+    # Maak DataFrame
+    df = pd.DataFrame(data)
+
+    # Toon de tabel
+    print(df.to_string(index=False))
+
+    # Exporteer naar Excel
+    output_file = "kruistabel_kwalificatiedossier.xlsx"
+    df.to_excel(output_file, index=False)
+    print(f"\nDe kruistabel is opgeslagen als '{output_file}'.")
+
+# Start het programma
+if __name__ == "__main__":
+    # Geef het pad naar je PDF-bestand op
+    pdf_file = "path/to/your/kwalificatiedossier.pdf"  # Vervang dit door het echte pad
+    main(pdf_file)
