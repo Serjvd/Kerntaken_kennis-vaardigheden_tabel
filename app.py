@@ -131,7 +131,7 @@ def extract_vakkennis_en_werkprocessen(pdf_file):
                         debug_log.append(f"Werkprocesbeschrijving toegevoegd aan {current_werkproces}: {current_werkproces_beschrijving}")
                         if not current_werkproces_beschrijving.strip():
                             debug_log.append(f"Waarschuwing: Geen beschrijving gevonden voor {current_werkproces}")
-                    current_werkproces_beschrijving = ""
+                    current_w Werkproces_beschrijving = ""
                     current_werkproces = werkproces_match.group(1)
                     if current_kerntaak not in werkprocessen_dict:
                         werkprocessen_dict[current_kerntaak] = []
@@ -231,7 +231,7 @@ def extract_vakkennis_en_werkprocessen(pdf_file):
 
     return vakkennis_dict, werkprocessen_dict, werkprocessen_beschrijvingen, raw_text, debug_log
 
-    # Functie om kruistabel te maken, inclusief werkprocessen
+# Functie om kruistabel te maken, inclusief werkprocessen
 def create_kruistabel(vakkennis_dict, werkprocessen_dict, werkprocessen_beschrijvingen):
     if not vakkennis_dict:
         return None, None, ["Geen vakkennis_dict beschikbaar"]
@@ -275,12 +275,15 @@ def create_kruistabel(vakkennis_dict, werkprocessen_dict, werkprocessen_beschrij
     # Extraheer trefwoorden uit werkproces-titels en -beschrijvingen
     werkproces_trefwoorden = {}
     for werkproces in alle_werkprocessen:
-        # Haal de titel op uit de werkproces-ID (bijvoorbeeld "B1-K1-W1: Kiest en controleert materialen")
+        # Haal de titel en beschrijving op
         beschrijving = werkprocessen_beschrijvingen.get(werkproces, "")
-        # Extraheer trefwoorden uit de beschrijving (enkele woorden, verwijder stopwoorden zoals "en", "de")
+        # Extraheer trefwoorden (verwijder stopwoorden en korte woorden)
         woorden = beschrijving.lower().split()
-        stopwoorden = {"en", "de", "het", "een", "voor", "met", "in", "op", "aan", "van", "bij"}
+        stopwoorden = {"en", "de", "het", "een", "voor", "met", "in", "op", "aan", "van", "bij", "is", "zijn"}
         trefwoorden = [woord for woord in woorden if woord not in stopwoorden and len(woord) > 3]
+        # Als er geen beschrijving is, gebruik de werkproces-ID als fallback
+        if not trefwoorden:
+            trefwoorden = werkproces.lower().split("-")
         werkproces_trefwoorden[werkproces] = trefwoorden
 
     # Koppel uitspraken aan werkprocessen via tekstanalyse
