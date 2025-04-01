@@ -28,26 +28,26 @@ if uploaded_file:
         end = kerntaken_blokken[kerntaken[i + 1]] if i + 1 < len(kerntaken) else len(text)
         blok = text[start:end]
 
-        # Zoek 'Vakkennis en vaardigheden'
-        match = re.search(r"Vakkennis en vaardigheden\n(.*?)(?=\n\S|\Z)", blok, re.DOTALL)
+        # Zoek flexibele match voor "Vakkennis en vaardigheden"
+        match = re.search(r"Vakkennis.{0,30}vaardigheden(.*?)(?=\n\S|\Z)", blok, re.DOTALL | re.IGNORECASE)
         if match:
             inhoud = match.group(1)
 
-            # Voeg aanvullingen toe
-            aanvullend = re.findall(r"Voor Allround.*?:\n(.*?)(?=\n\S|$)", blok, re.DOTALL)
-            if aanvullend:
-                inhoud += "\n" + "\n".join(aanvullend)
+            # Zoek aanvullingen: meerdere vormen
+            aanvullingen = re.findall(r"(?:Voor|Aanvullend).*?(allround).*?:\n(.*?)(?=\n\S|\Z)", blok, re.DOTALL | re.IGNORECASE)
+            for _, aanvulling in aanvullingen:
+                inhoud += "\n" + aanvulling
 
-            # Zoek uitspraken
-            regels = re.findall(r"(?m)^\s*(heeft|kan|kent|weet|past toe)\b.*", inhoud)
-            for regel in regels:
-                regel = regel.strip()
-                uitspraken_dict[regel].add(code)
-                if regel not in all_uitspraken:
+            # Zoek uitspraken die beginnen met deze werkwoorden, ergens op een regel
+            patronen = re.findall(r"\b(heeft|kan|kent|weet|past toe)\b.*?(?=\n|$)", inhoud, re.IGNORECASE)
+            for match in re.finditer(r"\b(heeft|kan|kent|weet|past toe)\b.*?(?=\n|$)", inhoud, re.IGNORECASE):
+                regel = match.group().strip()
+                if regel not in uitspraken_dict:
                     all_uitspraken.append(regel)
+                uitspraken_dict[regel].add(code)
 
     if not all_uitspraken:
-        st.error("⚠️ Er zijn geen uitspraken gevonden volgens het gevraagde format.")
+        st.error("⚠️ Er zijn geen uitspraken gevonden volgens het gevraagde format. Mogelijk komt dit door opmaak in de PDF.")
     else:
         data = []
         for u in all_uitspraken:
