@@ -89,7 +89,8 @@ def extract_vakkennis_en_werkprocessen(pdf_file):
                         werkprocessen_beschrijvingen[current_werkproces] = current_werkproces_beschrijving.strip()
                         debug_log.append(f"Werkprocesbeschrijving toegevoegd aan {current_werkproces}: {current_werkproces_beschrijving}")
                         if not current_werkproces_beschrijving.strip():
-                            debug_log.append(f"Waarschuwing: Geen beschrijving gevonden voor {current_werkproces}")
+                            debug_log.append(f"Waarschuwing: Geen beschrijving gevonden voor {current_werkproces}, gebruik titel als fallback")
+                            werkprocessen_beschrijvingen[current_werkproces] = current_werkproces
                     current_uitspraak = ""
                     current_werkproces = None
                     current_werkproces_beschrijving = ""
@@ -130,7 +131,8 @@ def extract_vakkennis_en_werkprocessen(pdf_file):
                         werkprocessen_beschrijvingen[current_werkproces] = current_werkproces_beschrijving.strip()
                         debug_log.append(f"Werkprocesbeschrijving toegevoegd aan {current_werkproces}: {current_werkproces_beschrijving}")
                         if not current_werkproces_beschrijving.strip():
-                            debug_log.append(f"Waarschuwing: Geen beschrijving gevonden voor {current_werkproces}")
+                            debug_log.append(f"Waarschuwing: Geen beschrijving gevonden voor {current_werkproces}, gebruik titel als fallback")
+                            werkprocessen_beschrijvingen[current_werkproces] = current_werkproces
                     current_werkproces_beschrijving = ""
                     current_werkproces = werkproces_match.group(1)
                     if current_kerntaak not in werkprocessen_dict:
@@ -172,7 +174,8 @@ def extract_vakkennis_en_werkprocessen(pdf_file):
                         werkprocessen_beschrijvingen[current_werkproces] = current_werkproces_beschrijving.strip()
                         debug_log.append(f"Werkprocesbeschrijving toegevoegd aan {current_werkproces}: {current_werkproces_beschrijving}")
                         if not current_werkproces_beschrijving.strip():
-                            debug_log.append(f"Waarschuwing: Geen beschrijving gevonden voor {current_werkproces}")
+                            debug_log.append(f"Waarschuwing: Geen beschrijving gevonden voor {current_werkproces}, gebruik titel als fallback")
+                            werkprocessen_beschrijvingen[current_werkproces] = current_werkproces
                     current_werkproces_beschrijving = ""
                     in_werkproces_block = False
                     continue
@@ -223,7 +226,8 @@ def extract_vakkennis_en_werkprocessen(pdf_file):
                 werkprocessen_beschrijvingen[current_werkproces] = current_werkproces_beschrijving.strip()
                 debug_log.append(f"Laatste werkprocesbeschrijving toegevoegd aan {current_werkproces}: {current_werkproces_beschrijving}")
                 if not current_werkproces_beschrijving.strip():
-                    debug_log.append(f"Waarschuwing: Geen beschrijving gevonden voor {current_werkproces}")
+                    debug_log.append(f"Waarschuwing: Geen beschrijving gevonden voor {current_werkproces}, gebruik titel als fallback")
+                    werkprocessen_beschrijvingen[current_werkproces] = current_werkproces
 
     except Exception as e:
         st.error(f"Fout bij het verwerken van de PDF: {e}")
@@ -276,14 +280,11 @@ def create_kruistabel(vakkennis_dict, werkprocessen_dict, werkprocessen_beschrij
     werkproces_trefwoorden = {}
     for werkproces in alle_werkprocessen:
         # Haal de titel en beschrijving op
-        beschrijving = werkprocessen_beschrijvingen.get(werkproces, "")
+        beschrijving = werkprocessen_beschrijvingen.get(werkproces, werkproces)  # Gebruik werkproces-ID als fallback
         # Extraheer trefwoorden (verwijder stopwoorden en korte woorden)
         woorden = beschrijving.lower().split()
-        stopwoorden = {"en", "de", "het", "een", "voor", "met", "in", "op", "aan", "van", "bij", "is", "zijn"}
+        stopwoorden = {"en", "de", "het", "een", "voor", "met", "in", "op", "aan", "van", "bij", "is", "zijn", "b1", "k1", "w1", "w2", "w3", "w4", "w5", "w6", "w7", "w8"}
         trefwoorden = [woord for woord in woorden if woord not in stopwoorden and len(woord) > 3]
-        # Als er geen beschrijving is, gebruik de werkproces-ID als fallback
-        if not trefwoorden:
-            trefwoorden = werkproces.lower().split("-")
         werkproces_trefwoorden[werkproces] = trefwoorden
 
     # Koppel uitspraken aan werkprocessen via tekstanalyse
@@ -298,7 +299,7 @@ def create_kruistabel(vakkennis_dict, werkprocessen_dict, werkprocessen_beschrij
         # Verzamel alle werkprocessen voor deze kerntaak
         kerntaak_werkprocessen = werkprocessen_dict[kerntaak]
         # Verzamel de beschrijvingen van de werkprocessen
-        werkproces_texts = [werkprocessen_beschrijvingen.get(wp, "") for wp in kerntaak_werkprocessen]
+        werkproces_texts = [werkprocessen_beschrijvingen.get(wp, wp) for wp in kerntaak_werkprocessen]
 
         for uitspraak in kerntaak_uitspraken:
             # Maak een lijst van teksten: de uitspraak + alle werkprocesbeschrijvingen
@@ -306,7 +307,8 @@ def create_kruistabel(vakkennis_dict, werkprocessen_dict, werkprocessen_beschrij
             best_werkproces = None
             used_fallback = False
 
-            if not all(texts) or "" in texts:  # Controleer of er lege teksten zijn
+            # Controleer of er lege teksten zijn
+            if not all(texts) or "" in texts:
                 # Fallback: gebruik trefwoorden om een werkproces te kiezen
                 used_fallback = True
                 uitspraak_woorden = uitspraak.lower().split()
@@ -323,13 +325,29 @@ def create_kruistabel(vakkennis_dict, werkprocessen_dict, werkprocessen_beschrij
                 fallback_koppelingen[uitspraak] = best_werkproces
             else:
                 # Bereken de TF-IDF-matrix
-                tfidf_matrix = vectorizer.fit_transform(texts)
-                # Bereken de cosine similarity tussen de uitspraak en elk werkproces
-                similarities = cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:])[0]
-                # Vind het werkproces met de hoogste similarity
-                best_match_idx = similarities.argmax()
-                best_werkproces = kerntaak_werkprocessen[best_match_idx]
-                koppelingen_log.append(f"Koppel {uitspraak} aan {best_werkproces} (similarity: {similarities[best_match_idx]})")
+                try:
+                    tfidf_matrix = vectorizer.fit_transform(texts)
+                    # Bereken de cosine similarity tussen de uitspraak en elk werkproces
+                    similarities = cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:])[0]
+                    # Vind het werkproces met de hoogste similarity
+                    best_match_idx = similarities.argmax()
+                    best_werkproces = kerntaak_werkprocessen[best_match_idx]
+                    koppelingen_log.append(f"Koppel {uitspraak} aan {best_werkproces} (similarity: {similarities[best_match_idx]})")
+                except ValueError:
+                    # Als TF-IDF faalt (bijvoorbeeld door lege teksten), gebruik de fallback
+                    used_fallback = True
+                    uitspraak_woorden = uitspraak.lower().split()
+                    beste_score = 0
+                    for wp in kerntaak_werkprocessen:
+                        trefwoorden = werkproces_trefwoorden.get(wp, [])
+                        score = sum(1 for woord in uitspraak_woorden if woord in trefwoorden)
+                        if score > beste_score:
+                            beste_score = score
+                            best_werkproces = wp
+                    if not best_werkproces:  # Als er geen match is, kies het eerste werkproces
+                        best_werkproces = kerntaak_werkprocessen[0]
+                    koppelingen_log.append(f"Tekstanalyse mislukt, koppel {uitspraak} aan {best_werkproces} (fallback)")
+                    fallback_koppelingen[uitspraak] = best_werkproces
 
             # Markeer de uitspraak in de kolom van het beste werkproces
             uitspraak_idx = uitspraken.index(uitspraak)
