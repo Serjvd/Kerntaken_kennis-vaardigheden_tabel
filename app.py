@@ -2,6 +2,7 @@ import streamlit as st
 import pdfplumber
 import pandas as pd
 import re
+from io import BytesIO
 
 # Functie om "Vakkennis en vaardigheden"-blokken te extraheren
 def extract_vakkennis_en_vaardigheden(pdf_file):
@@ -47,7 +48,8 @@ def extract_vakkennis_en_vaardigheden(pdf_file):
                     continue
 
                 if in_vakkennis_block and current_kerntaak:
-                    cleaned_line = line.lstrip("- ").strip()
+                    # Verwijder zowel "-" als "§" en strip whitespace
+                    cleaned_line = line.lstrip("-§ ").strip()
                     if any(cleaned_line.startswith(word + " ") for word in target_words):
                         uitspraak = cleaned_line
                         if uitspraak and uitspraak not in vakkennis_dict[current_kerntaak]:
