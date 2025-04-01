@@ -205,7 +205,7 @@ def extract_vakkennis_en_werkprocessen(pdf_file):
 # Functie om kruistabel te maken, inclusief werkprocessen
 def create_kruistabel(vakkennis_dict, werkprocessen_dict, werkprocessen_beschrijvingen):
     if not vakkennis_dict:
-        return None, None
+        return None, None, ["Geen vakkennis_dict beschikbaar"]
 
     # Verzamel alle kerntaken en werkprocessen
     kerntaken = list(vakkennis_dict.keys())
@@ -245,6 +245,7 @@ def create_kruistabel(vakkennis_dict, werkprocessen_dict, werkprocessen_beschrij
     vectorizer = TfidfVectorizer()
     for kerntaak in kerntaken:
         if kerntaak not in werkprocessen_dict or not werkprocessen_dict[kerntaak]:
+            koppelingen_log.append(f"Geen werkprocessen voor kerntaak {kerntaak}")
             continue  # Geen werkprocessen voor deze kerntaak
 
         # Verzamel alle uitspraken voor deze kerntaak
@@ -343,5 +344,5 @@ def main():
         else:
             st.warning("Geen 'Vakkennis en vaardigheden'-blokken gevonden in de PDF.")
 
-if __name__ == "__module__":
+if __name__ == "__main__":
     main()
