@@ -238,6 +238,9 @@ def create_kruistabel(vakkennis_dict, werkprocessen_dict, werkprocessen_beschrij
         display_data[werkproces] = [""] * len(uitspraken)
         sort_data[werkproces] = [0] * len(uitspraken)
 
+    # Lijst om koppelingen op te slaan voor debugging
+    koppelingen_log = []
+
     # Koppel uitspraken aan werkprocessen via tekstanalyse
     vectorizer = TfidfVectorizer()
     for kerntaak in kerntaken:
@@ -257,7 +260,7 @@ def create_kruistabel(vakkennis_dict, werkprocessen_dict, werkprocessen_beschrij
             if not all(texts):  # Controleer of er lege teksten zijn
                 # Fallback: koppel aan het eerste werkproces
                 best_werkproces = kerntaak_werkprocessen[0]
-                st.write(f"Geen beschrijving beschikbaar, koppel {uitspraak} aan {best_werkproces}")
+                koppelingen_log.append(f"Geen beschrijving beschikbaar, koppel {uitspraak} aan {best_werkproces}")
             else:
                 # Bereken de TF-IDF-matrix
                 tfidf_matrix = vectorizer.fit_transform(texts)
@@ -266,7 +269,7 @@ def create_kruistabel(vakkennis_dict, werkprocessen_dict, werkprocessen_beschrij
                 # Vind het werkproces met de hoogste similarity
                 best_match_idx = similarities.argmax()
                 best_werkproces = kerntaak_werkprocessen[best_match_idx]
-                st.write(f"Koppel {uitspraak} aan {best_werkproces} (similarity: {similarities[best_match_idx]})")
+                koppelingen_log.append(f"Koppel {uitspraak} aan {best_werkproces} (similarity: {similarities[best_match_idx]})")
 
             # Markeer de uitspraak in de kolom van het beste werkproces
             uitspraak_idx = uitspraken.index(uitspraak)
@@ -277,7 +280,7 @@ def create_kruistabel(vakkennis_dict, werkprocessen_dict, werkprocessen_beschrij
     display_df = pd.DataFrame(display_data)
     sort_df = pd.DataFrame(sort_data)
 
-    return display_df, sort_df
+    return display_df, sort_df, koppelingen_log
 
 # Streamlit-interface
 def main():
@@ -304,8 +307,14 @@ def main():
             st.write("Beschrijvingen van werkprocessen:", werkprocessen_beschrijvingen)
 
         if vakkennis_dict:
-            display_df, sort_df = create_kruistabel(vakkennis_dict, werkprocessen_dict, werkprocessen_beschrijvingen)
+            display_df, sort_df, koppelingen_log = create_kruistabel(vakkennis_dict, werkprocessen_dict, werkprocessen_beschrijvingen)
             if display_df is not None and not display_df.empty:
+                # Debug: toon koppelingen tussen uitspraken en werkprocessen
+                with st.expander("Toon koppelingen tussen uitspraken en werkprocessen"):
+                    st.write("Koppelingen log:")
+                    for log in koppelingen_log:
+                        st.write(log)
+
                 # Toon de kruistabel
                 st.write("### Kruistabel")
                 st.write("Klik op een kolomkop om te sorteren (oplopend/aflopend):")
@@ -334,5 +343,5 @@ def main():
         else:
             st.warning("Geen 'Vakkennis en vaardigheden'-blokken gevonden in de PDF.")
 
-if __name__ == "__main__":
+if __name__ == "__module__":
     main()
