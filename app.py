@@ -53,7 +53,7 @@ def extract_vakkennis_en_vaardigheden(pdf_file):
                                 debug_log.append(f"Uitspraak toegevoegd aan {current_kerntaak}: {current_uitspraak}")
                     current_uitspraak = ""
                     current_kerntaak = kerntaak_match.group(1)
-                    in_vakkennis_block = False
+                    in_vakkennis_block = False  # Reset bij nieuwe kerntaak
                     aanvullend_block = False
                     if current_kerntaak not in vakkennis_dict:
                         vakkennis_dict[current_kerntaak] = []
