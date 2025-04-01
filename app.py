@@ -11,6 +11,7 @@ def extract_vakkennis_en_vaardigheden(pdf_file):
     in_vakkennis_block = False
     aanvullend_block = False
     raw_text = []  # Voor debugging
+    current_uitspraak = ""  # Voor uitspraken die over meerdere regels lopen
 
     kerntaak_pattern = re.compile(r"(B\d+-K\d+|P\d+-K\d+):")
     target_words = ["heeft", "kan", "kent", "weet", "past toe"]
@@ -32,6 +33,12 @@ def extract_vakkennis_en_vaardigheden(pdf_file):
                 line = line.strip()
                 kerntaak_match = kerntaak_pattern.search(line)
                 if kerntaak_match:
+                    # Als we een nieuwe kerntaak vinden, sla de huidige uitspraak op (indien aanwezig)
+                    if current_uitspraak and current_kerntaak and in_vakkennis_block:
+                        if any(current_uitspraak.startswith(word + " ") for word in target_words):
+                            if current_uitspraak not in vakkennis_dict[current_kerntaak]:
+                                vakkennis_dict[current_kerntaak].append(current_uitspraak)
+                    current_uitspraak = ""
                     current_kerntaak = kerntaak_match.group(1)
                     in_vakkennis_block = False
                     aanvullend_block = False
@@ -50,10 +57,32 @@ def extract_vakkennis_en_vaardigheden(pdf_file):
                 if in_vakkennis_block and current_kerntaak:
                     # Verwijder zowel "-" als "§" en strip whitespace
                     cleaned_line = line.lstrip("-§ ").strip()
+                    if not cleaned_line:  # Lege regel, sla op en reset
+                        if current_uitspraak:
+                            if any(current_uitspraak.startswith(word + " ") for word in target_words):
+                                if current_uitspraak not in vakkennis_dict[current_kerntaak]:
+                                    vakkennis_dict[current_kerntaak].append(current_uitspraak)
+                            current_uitspraak = ""
+                        continue
+
+                    # Controleer of de regel begint met een target-woord
                     if any(cleaned_line.startswith(word + " ") for word in target_words):
-                        uitspraak = cleaned_line
-                        if uitspraak and uitspraak not in vakkennis_dict[current_kerntaak]:
-                            vakkennis_dict[current_kerntaak].append(uitspraak)
+                        # Sla de vorige uitspraak op (indien aanwezig)
+                        if current_uitspraak:
+                            if any(current_uitspraak.startswith(word + " ") for word in target_words):
+                                if current_uitspraak not in vakkennis_dict[current_kerntaak]:
+                                    vakkennis_dict[current_kerntaak].append(current_uitspraak)
+                        current_uitspraak = cleaned_line
+                    else:
+                        # Voeg toe aan de huidige uitspraak (voor meerregelige uitspraken)
+                        if current_uitspraak:
+                            current_uitspraak += " " + cleaned_line
+
+            # Sla de laatste uitspraak op
+            if current_uitspraak and current_kerntaak and in_vakkennis_block:
+                if any(current_uitspraak.startswith(word + " ") for word in target_words):
+                    if current_uitspraak not in vakkennis_dict[current_kerntaak]:
+                        vakkennis_dict[current_kerntaak].append(current_uitspraak)
 
     except Exception as e:
         st.error(f"Fout bij het verwerken van de PDF: {e}")
