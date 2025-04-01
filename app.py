@@ -15,6 +15,8 @@ def extract_vakkennis_en_vaardigheden(pdf_file):
 
     kerntaak_pattern = re.compile(r"(B\d+-K\d+|P\d+-K\d+):")
     target_words = ["heeft", "kan", "kent", "weet", "past toe"]
+    # Patronen om het einde van een "Vakkennis en vaardigheden"-blok te detecteren
+    end_block_indicators = ["Complexiteit", "Verantwoordelijkheid en zelfstandigheid", "Omschrijving"]
 
     try:
         with pdfplumber.open(pdf_file) as pdf:
@@ -33,7 +35,7 @@ def extract_vakkennis_en_vaardigheden(pdf_file):
                 line = line.strip()
                 kerntaak_match = kerntaak_pattern.search(line)
                 if kerntaak_match:
-                    # Als we een nieuwe kerntaak vinden, sla de huidige uitspraak op (indien aanwezig)
+                    # Sla de huidige uitspraak op (indien aanwezig)
                     if current_uitspraak and current_kerntaak and in_vakkennis_block:
                         if any(current_uitspraak.startswith(word + " ") for word in target_words):
                             if current_uitspraak not in vakkennis_dict[current_kerntaak]:
@@ -46,16 +48,28 @@ def extract_vakkennis_en_vaardigheden(pdf_file):
                         vakkennis_dict[current_kerntaak] = []
                     continue
 
+                # Detecteer start van "Vakkennis en vaardigheden"
                 if "Vakkennis en vaardigheden" in line:
                     in_vakkennis_block = True
                     continue
 
+                # Detecteer aanvullend blok
                 if "Voor Allround betonreparateur geldt aanvullend:" in line and current_kerntaak:
                     aanvullend_block = True
                     continue
 
+                # Detecteer einde van "Vakkennis en vaardigheden"-blok
+                if in_vakkennis_block and any(indicator in line for indicator in end_block_indicators):
+                    if current_uitspraak and current_kerntaak:
+                        if any(current_uitspraak.startswith(word + " ") for word in target_words):
+                            if current_uitspraak not in vakkennis_dict[current_kerntaak]:
+                                vakkennis_dict[current_kerntaak].append(current_uitspraak)
+                    current_uitspraak = ""
+                    in_vakkennis_block = False
+                    aanvullend_block = False
+                    continue
+
                 if in_vakkennis_block and current_kerntaak:
-                    # Verwijder zowel "-" als "§" en strip whitespace
                     cleaned_line = line.lstrip("-§ ").strip()
                     if not cleaned_line:  # Lege regel, sla op en reset
                         if current_uitspraak:
