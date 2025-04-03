@@ -442,12 +442,6 @@ def main():
                     }
                 )
 
-                # Toon de koppelingen_log voor debugging
-                st.write("### Debug Log")
-                st.write("Hieronder zie je hoe de koppelingen zijn gemaakt:")
-                for log_entry in koppelingen_log:
-                    st.write(log_entry)
-
                 # Downloadknop voor Excel
                 output = BytesIO()
                 styled_df.data.to_excel(output, index=False)
